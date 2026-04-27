@@ -1,0 +1,58 @@
+@* Kopplar vyn till UploadViewModel – Razor använder modellen för asp-for tag helpers *@
+@model CvApp.Models.UploadViewModel
+
+@* Denna fil måste heta exakt som sin GET-action i Controllern (UploadForm)
+   ELLER att controllern explicit anger return View("Upload") *@
+
+<h2>Ladda upp CV</h2>
+
+@* Visar felmeddelanden från ModelState om något gick fel
+   ModelState fylls på i controllerns catch-block via ModelState.AddModelError()
+   ValidationSummary läser av ModelState och renderar felmeddelandena som HTML *@
+@if (!ViewData.ModelState.IsValid)
+{
+    <div class="alert alert-danger">
+        @Html.ValidationSummary()
+    </div>
+}
+
+@* asp-controller och asp-action genererar rätt action-URL automatiskt
+   method="post" – skickar formulärdata i request body (inte i URL:en som GET gör)
+   enctype="multipart/form-data" – KRITISKT för filuppladdning!
+   Utan detta skickas aldrig filen till servern, bara textfälten *@
+<form asp-controller="Candidate" asp-action="Upload" method="post" enctype="multipart/form-data">
+    
+    @* asp-for kopplar fältet till modellens property
+       Genererar automatiskt rätt name, id och type-attribut
+       Används även av valideringsramverket för att visa fältspecifika fel *@
+    <div>
+        <label asp-for="Name">Namn</label>
+        <input asp-for="Name" type="text" />
+    </div>
+    <div>
+        <label asp-for="Email">E-post</label>
+        <input asp-for="Email" type="email" />
+    </div>
+    <div>
+        <label asp-for="PhoneNumber">Telefon</label>
+        <input asp-for="PhoneNumber" type="tel" />
+    </div>
+    
+    @* Skills skickas som en kommaseparerad sträng, t.ex. "Azure, C#, React"
+       Servicen splittar och trimmar strängen och skapar Skill-objekt av varje del *@
+    <div>
+        <label asp-for="Skills">Kompetenser (kommaseparerat)</label>
+        <input asp-for="Skills" type="text" placeholder="Azure, C#, React" />
+    </div>
+    
+    @* accept=".pdf" begränsar filväljaren till PDF-filer i webbläsaren
+       OBS: Detta är bara en UI-begränsning – validering på servern behövs också
+       för säkerhet eftersom accept enkelt kan kringgås *@
+    <div>
+        <label asp-for="Cv">CV (PDF)</label>
+        <input asp-for="Cv" type="file" accept=".pdf" />
+    </div>
+    
+    @* type="submit" triggar formulärets POST-request när användaren klickar *@
+    <button type="submit">Ladda upp</button>
+</form>

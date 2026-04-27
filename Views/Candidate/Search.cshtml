@@ -1,0 +1,33 @@
+@model List<CvApp.Models.CandidateSearchResultDto>
+
+<h2>Sök efter kandidater</h2>
+
+<form asp-controller="Candidate" asp-action="GetCandidatesBySkills" method="get">
+    <input type="text" name="skills" placeholder="Azure, C#, React" />
+    <button type="submit">Sök</button>
+</form>
+
+@if (Model != null && Model.Any())
+{
+    <table>
+        <thead>
+        <tr>
+            <th>Namn</th>
+            <th>Kompetenser</th>
+        </tr>
+        </thead>
+        <tbody>
+        @foreach (var candidate in Model)
+        {
+            <tr>
+                <td>@candidate.Name</td>
+                <td>@string.Join(", ", candidate.Skills.Select(s => s.Skill))</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
+else if (Model != null && !Model.Any())
+{
+    <p>Inga kandidater hittades.</p>
+}
