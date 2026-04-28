@@ -1,10 +1,13 @@
 ﻿
 
-// Test lokalt - 
 
 
+
+using Azure.Identity;
+using Azure.Storage.Blobs;
 using CvApp.Core.Interface;
 using CvApp.Data;
+using CvApp.Data.Entities;
 using CvApp.Models;
 using Microsoft.EntityFrameworkCore;
 
@@ -50,34 +53,59 @@ public class CandidateService : ICandidateService
         }).ToList();
     }
 
-
     public async Task UploadCandidateAsync(UploadViewModel model)
     {
-        // Skapa en Uploads-mapp i projektets rot om den inte finns
-        var uploadsFolder = Path.Combine(Directory.GetCurrentDirectory(), "Uploads");
+        // 1. Anslut till Storage Account via connection string från appsettings.json
+        // BlobServiceClient är ingångspunkten till hela Storage Account
+        var blobServiceClient = new BlobServiceClient(
+        new Uri($"https://{_configuration["Azure:StorageAccountName"]}.blob.core.windows.net"),
+        new DefaultAzureCredential());
 
-        if (!Directory.Exists(uploadsFolder))
+        // 2. Hämta containern – en container är som en mapp i Blob Storage
+        var containerClient = blobServiceClient.GetBlobContainerClient(_configuration["Azure:ContainerName"]);
+
+        // 3. Skapa ett unikt filnamn med Guid för att undvika kollisioner
+        // Om två kandidater laddar upp "cv.pdf" skulle den ena skriva över den andra
+        // Guid.NewGuid() genererar ett globalt unikt ID, t.ex: "3f2504e0-cv.pdf"
+        var fileName = $"{Guid.NewGuid()}_{model.Cv.FileName}";
+        var blobClient = containerClient.GetBlobClient(fileName);
+
+        // 4. Ladda upp filen som en stream
+        // OpenReadStream() öppnar filens innehåll för läsning utan att ladda hela filen i minnet
+        await blobClient.UploadAsync(model.Cv.OpenReadStream());
+
+        // 5. Bygg upp kandidatobjektet som ska sparas i databasen
+        var candidate = new Candidate
         {
-            Directory.CreateDirectory(uploadsFolder);
-        }
+            Name = model.Name,
+            Email = model.Email,
+            PhoneNumber = model.PhoneNumber,
 
-        // Hämta filnamn och extension separat
-        var originalFileName = Path.GetFileNameWithoutExtension(model.Cv.FileName);
-        var extension = Path.GetExtension(model.Cv.FileName);
+            // blobClient.Uri ger oss den publika URL:en till filen i Blob Storage
+            // Denna URL sparas i databasen så vi kan länka till filen senare
+            CvUrl = blobClient.Uri.ToString(),
 
-        // Skapa unikt filnamn med Guid för att undvika kollisioner
-        var uniqueFileName = $"{originalFileName}_{Guid.NewGuid()}{extension}";
+            // model.Skills är en kommaseparerad sträng, t.ex. "Azure, C#, React"
+            // Split(",")  → delar upp strängen till en array: ["Azure", " C#", " React"]
+            // .Trim()     → tar bort mellanslag i början/slutet av varje element: ["Azure", "C#", "React"]
+            // Select(...)  → omvandlar varje sträng till ett Skill-objekt (LINQ-transformation)
+            // .ToList()   → konverterar resultatet till List<Skill> som Candidate.Skills förväntar sig
+            Skills = model.Skills
+                .Split(",")
+                .Select(s => new Skill { SkillName = s.Trim() })
+                .ToList()
+        };
 
-        // Bygg fullständig sökväg
-        var filePath = Path.Combine(uploadsFolder, uniqueFileName);
+        // 6. Lägg till kandidaten i DbContext (spåras nu av EF Core)
+        await _context.Candidates.AddAsync(candidate);
 
-        // Spara filen till disk
-        // using säkerställer att stream stängs och resurser frigörs efteråt
-        using (var stream = new FileStream(filePath, FileMode.Create))
-        {
-            await model.Cv.CopyToAsync(stream);
-        }
-
-        // TODO: Spara kandidatdata till databas (implementeras när Azure är uppsatt)
+        // 7. SaveChangesAsync skriver alla spårade ändringar till databasen i en transaktion
+        // Utan detta anropet sparas ingenting – EF Core väntar tills du explicit ber om det
+        await _context.SaveChangesAsync();
     }
+
+
+
+
+
 }

@@ -37,7 +37,7 @@ public class CandidateController : Controller
         try
         {
             var candidate = await _candidateService.GetCandidatesBySkillsAsync(skills);
-            return View(candidate);
+            return View("Search", candidate);
 
         }
         catch (Exception e)

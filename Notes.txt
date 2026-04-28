@@ -1,0 +1,56 @@
+﻿===========================
+## Denna om man kör lokalt:
+
+public async Task UploadCandidateAsync(UploadViewModel model)
+    {
+        // Skapa en Uploads-mapp i projektets rot om den inte finns
+        var uploadsFolder = Path.Combine(Directory.GetCurrentDirectory(), "Uploads");
+
+        if (!Directory.Exists(uploadsFolder))
+        {
+            Directory.CreateDirectory(uploadsFolder);
+        }
+
+        // Hämta filnamn och extension separat
+        var originalFileName = Path.GetFileNameWithoutExtension(model.Cv.FileName);
+        var extension = Path.GetExtension(model.Cv.FileName);
+
+        // Skapa unikt filnamn med Guid för att undvika kollisioner
+        var uniqueFileName = $"{originalFileName}_{Guid.NewGuid()}{extension}";
+
+        // Bygg fullständig sökväg
+        var filePath = Path.Combine(uploadsFolder, uniqueFileName);
+
+        // Spara filen till disk
+        // using säkerställer att stream stängs och resurser frigörs efteråt
+        using (var stream = new FileStream(filePath, FileMode.Create))
+        {
+            await model.Cv.CopyToAsync(stream);
+        }
+
+        // Bygg upp kandidatobjektet som ska sparas i databasen
+        // filePath används som CvUrl lokalt – i Azure-versionen blir det en Blob Storage URL
+        var candidate = new Candidate
+        {
+            Name = model.Name,
+            Email = model.Email,
+            PhoneNumber = model.PhoneNumber,
+            CvUrl = filePath,
+
+            // model.Skills är en kommaseparerad sträng, t.ex. "Azure, C#, React"
+            // Split(",")  → ["Azure", " C#", " React"]
+            // .Trim()     → ["Azure", "C#", "React"]
+            // Select(...) → omvandlar varje sträng till ett Skill-objekt
+            Skills = model.Skills
+                .Split(",")
+                .Select(s => new Skill { SkillName = s.Trim() })
+                .ToList()
+        };
+
+        // Lägg till kandidaten i DbContext
+        await _context.Candidates.AddAsync(candidate);
+
+        // Skriver alla ändringar till databasen i en transaktion
+        await _context.SaveChangesAsync();
+    }
+===========================
